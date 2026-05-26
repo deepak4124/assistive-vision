@@ -28,7 +28,7 @@ image = (
     modal.Image.debian_slim(python_version="3.10")
     .pip_install(
         "vllm==0.6.5",
-        "transformers>=4.45.0,<5.0.0",
+        "transformers==4.48.2",
         "qwen-vl-utils",
         "fastapi[standard]",
         "pydantic",
