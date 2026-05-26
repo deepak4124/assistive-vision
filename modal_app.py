@@ -2,14 +2,16 @@ import modal
 from pydantic import BaseModel
 import base64
 import io
+import os
 
 # ---------------------------------------------------------
 # Define Modal Application
 # ---------------------------------------------------------
-app = modal.App("assistive-vision-backend")
+app = modal.App("vision-v2")
 
 # Define the precise open-source VLM weight repository to pull
-MODEL_NAME = "Qwen/Qwen2.5-VL-3B-Instruct"
+MODEL_NAME = "Qwen/Qwen2-VL-2B-Instruct"
+HF_SECRET = modal.Secret.from_name("hf-token")
 
 # ---------------------------------------------------------
 # Caching & Dependency Setup
@@ -18,20 +20,22 @@ def download_weights():
     from huggingface_hub import snapshot_download
     # Downloads the model weights to the container's cache during the `modal deploy` / build step.
     # This prevents redownloading upon cold starts.
-    snapshot_download(MODEL_NAME)
+    hf_token = os.environ.get("HF_TOKEN")
+    snapshot_download(MODEL_NAME, token=hf_token)
 
 # Set up the environment with required dependencies for vLLM and vision models
 image = (
     modal.Image.debian_slim(python_version="3.10")
     .pip_install(
-        "vllm==0.6.3",
+        "vllm==0.6.5",
+        "transformers>=4.45.0,<5.0.0",
         "qwen-vl-utils",
         "fastapi[standard]",
         "pydantic",
         "huggingface_hub",
         "pillow"
     )
-    .run_function(download_weights)
+    .run_function(download_weights, secrets=[HF_SECRET])
 )
 
 # ---------------------------------------------------------
@@ -48,7 +52,7 @@ class InferencePayload(BaseModel):
 # ---------------------------------------------------------
 # Serverless vLLM Cloud Engine
 # ---------------------------------------------------------
-@app.cls(image=image, gpu="A10G", container_idle_timeout=300)
+@app.cls(image=image, gpu="A10G", scaledown_window=300, secrets=[HF_SECRET])
 class VisionLanguageModel:
     @modal.enter()
     def setup(self):
@@ -74,7 +78,7 @@ class VisionLanguageModel:
         )
         print("Engine ready.")
 
-    @modal.web_endpoint(method="POST", docs=True)
+    @modal.fastapi_endpoint(method="POST", docs=True)
     def generate(self, payload: InferencePayload):
         """
         FastAPI-compliant POST endpoint accepting the validated payload.
