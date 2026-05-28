@@ -4,7 +4,7 @@ This repository provides an end-to-end framework for deploying powerful Vision-L
 
 ## Components 
 
-* **modal_app.py**: A fully functional Modal deployment script. It handles downloading `Qwen/Qwen2-VL-2B-Instruct` directly into the caching layer to prevent cold-start download times. Using the `@app.cls()` standard, the VLM is safely preloaded into an `A10G` instance's VRAM for highly efficient batched decoding inference.
+* **modal_app.py**: A fully functional Modal deployment script. It handles downloading multiple VLMs directly into the caching layer to prevent cold-start download times. Using multiple `@app.cls()` entries, each VLM is preloaded into GPU VRAM with its own endpoint.
 * **edge_client.py**: A conceptual snippet using OpenCV to grab frames from a constrained device (e.g. Pi Camera), encode them into Base64 format, and ship them alongside a prompt to the defined Modal endpoint.
 
 ## Usage
@@ -20,14 +20,23 @@ Deploy the serverless API:
 ```bash
 modal deploy modal_app.py
 ```
-This command will provision the infrastructure and output a generic webhook (e.g., `https://<username>--...modal.run`).
+This command will provision the infrastructure and output one webhook per model (e.g., `https://<username>--...modal.run`).
+
+The model endpoints are tied to the Modal class names. The default ones are:
+
+| Model Key | Endpoint Suffix |
+| --- | --- |
+| qwen | `vision-v2-qwenvisionlanguagemodel-generate` |
+| llava_mistral | `vision-v2-llavamistralvisionlanguagemodel-generate` |
+| llava_15 | `vision-v2-llava15visionlanguagemodel-generate` |
+| falcon | `vision-v2-falconvisionlanguagemodel-generate` |
 
 ### 2. Edge Device Setup
-Replace the placeholder `MODAL_ENDPOINT` URL inside [edge_client.py](edge_client.py) with your active webhook.
+Replace the URLs in `MODEL_ENDPOINTS` inside [edge_client.py](edge_client.py) with your active webhooks.
 
 Install edge dependencies:
 ```bash
-python -m pip install opencv-python requests
+python -m pip install opencv-python requests httpx
 ```
 
 Capture the frame and dispatch the inference request:
@@ -35,8 +44,11 @@ Capture the frame and dispatch the inference request:
 python edge_client.py
 ```
 
+### 2.1 Async edge request (single endpoint)
+The edge client includes an async request example (single endpoint per request). Toggle it in [edge_client.py](edge_client.py).
+
 ### 3. Raspberry Pi Endpoint Test (Thorough)
-This section shows how to hit the Modal endpoint from a Raspberry Pi using either `curl` or a small Python script.
+This section shows how to hit any Modal endpoint from a Raspberry Pi using either `curl` or a small Python script.
 
 #### 3.1. Prerequisites
 1. Raspberry Pi OS (64-bit recommended).

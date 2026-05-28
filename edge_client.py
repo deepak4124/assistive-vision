@@ -1,11 +1,18 @@
-import cv2
+import asyncio
 import base64
-import requests
 import time
 
-# After running `modal deploy modal_app.py`, replace this URL with the actual endpoint Modal provides.
-# It typically takes the format: https://<username>--assistive-vision-backend-visionlanguagemodel-generate.modal.run
-MODAL_ENDPOINT = "https://<your-username-here>--assistive-vision-backend-visionlanguagemodel-generate.modal.run"
+import cv2
+import requests
+
+# After running `modal deploy modal_app.py`, replace the URLs with the actual endpoints Modal provides.
+# Each model class gets its own endpoint suffix in the Modal URL.
+MODEL_ENDPOINTS = {
+    "qwen": "https://<your-username-here>--vision-v2-qwenvisionlanguagemodel-generate.modal.run",
+    "llava_mistral": "https://<your-username-here>--vision-v2-llavamistralvisionlanguagemodel-generate.modal.run",
+    "llava_15": "https://<your-username-here>--vision-v2-llava15visionlanguagemodel-generate.modal.run",
+    "falcon": "https://<your-username-here>--vision-v2-falconvisionlanguagemodel-generate.modal.run",
+}
 
 def capture_and_encode_frame():
     """
@@ -36,7 +43,7 @@ def capture_and_encode_frame():
     b64_string = base64.b64encode(encimg).decode('utf-8')
     return b64_string
 
-def request_vlm_inference(prompt: str, image_b64: str):
+def request_vlm_inference(prompt: str, image_b64: str, endpoint: str):
     """
     Constructs the JSON payload and blocks until the Modal endpoint responds.
     """
@@ -48,11 +55,11 @@ def request_vlm_inference(prompt: str, image_b64: str):
     
     headers = {"Content-Type": "application/json"}
     
-    print(f"Sending POST request to Mode endpoint: {MODAL_ENDPOINT}")
+    print(f"Sending POST request to Modal endpoint: {endpoint}")
     start_time = time.time()
     
     try:
-        response = requests.post(MODAL_ENDPOINT, json=payload, headers=headers)
+        response = requests.post(endpoint, json=payload, headers=headers)
         response.raise_for_status()  # Check for malformed requests / internal inference errors
         
         result = response.json()
@@ -65,11 +72,50 @@ def request_vlm_inference(prompt: str, image_b64: str):
         if response is not None:
              print("Server detail:", response.text)
 
+
+async def request_vlm_inference_async(prompt: str, image_b64: str, endpoint: str):
+    """
+    Async variant using httpx so you can await multiple requests if needed.
+    """
+    import httpx
+
+    payload = {
+        "prompt": prompt,
+        "image_b64": image_b64,
+    }
+    headers = {"Content-Type": "application/json"}
+
+    print(f"Sending async POST request to Modal endpoint: {endpoint}")
+    start_time = time.time()
+
+    async with httpx.AsyncClient(timeout=180) as client:
+        try:
+            response = await client.post(endpoint, json=payload, headers=headers)
+            response.raise_for_status()
+
+            result = response.json()
+            latency = (time.time() - start_time) * 1000
+            print(f"Inference Latency: {latency:.2f} ms")
+            print(f"VLM Response: {result.get('response')}")
+        except httpx.HTTPError as e:
+            print(f"Edge Communication Error: {e}")
+            if getattr(e, "response", None) is not None:
+                print("Server detail:", e.response.text)
+
 if __name__ == "__main__":
     print("Assistive Vision Edge Client Initializing...")
     try:
         b64_image = capture_and_encode_frame()
         prompt = "Describe this scene out loud for a visually impaired user. What is directly in front of the camera?"
-        request_vlm_inference(prompt, b64_image)
+        model_key = "qwen"
+        endpoint = MODEL_ENDPOINTS.get(model_key)
+        if not endpoint:
+            raise RuntimeError(f"Unknown model key: {model_key}")
+
+        # Sync request
+        request_vlm_inference(prompt, b64_image, endpoint)
+
+        # Async request example (single endpoint)
+        # asyncio.run(request_vlm_inference_async(prompt, b64_image, endpoint))
     except Exception as e:
         print(f"System Error: {str(e)}")
