@@ -26,6 +26,7 @@ dist/
 # Local files
 payload.json
 test.png
+dataset/dataset_vlm.zip
 
 # OS/editor
 .DS_Store
